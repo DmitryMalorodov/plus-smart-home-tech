@@ -1,6 +1,7 @@
 package ru.yandex.practicum.collector.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.collector.dto.hubs.HubEvent;
 import ru.yandex.practicum.collector.dto.sensors.SensorEvent;
@@ -13,8 +14,12 @@ import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 @RequiredArgsConstructor
 public class EventServiceImpl implements EventService {
     private final EventKafkaProducer eventKafkaProducer;
-    private static final String SENSORS_TOPIC = "telemetry.sensors.v1";
-    private static final String HUBS_TOPIC = "telemetry.hubs.v1";
+
+    @Value("${spring.kafka.topics.sensors}")
+    private final String SENSORS_TOPIC;
+
+    @Value("${spring.kafka.topics.hubs}")
+    private final String HUBS_TOPIC;
 
     @Override
     public void collectSensorEvent(SensorEvent event) {
