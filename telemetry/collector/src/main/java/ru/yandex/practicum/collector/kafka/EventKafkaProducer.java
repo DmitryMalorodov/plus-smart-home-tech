@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.Properties;
 
 @Slf4j
@@ -34,10 +35,10 @@ public class EventKafkaProducer implements AutoCloseable {
         producer = new KafkaProducer<>(props);
     }
 
-    public void send(String topic, String key, SpecificRecordBase avroRecord) {
+    public void send(String topic, String key, SpecificRecordBase avroRecord, Instant timestamp) {
         try {
             byte[] binaryData = serialize(avroRecord);
-            ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, key, binaryData);
+            ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, null, timestamp.toEpochMilli(), key, binaryData);
 
             producer.send(record, (metadata, exception) -> {
                 if (exception != null) {
