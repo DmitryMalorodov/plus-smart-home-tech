@@ -3,10 +3,9 @@ package ru.yandex.practicum.collector.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import ru.yandex.practicum.collector.dto.hubs.HubEvent;
-import ru.yandex.practicum.collector.dto.sensors.SensorEvent;
 import ru.yandex.practicum.collector.kafka.EventKafkaProducer;
 import ru.yandex.practicum.collector.mapper.EventMapper;
+import ru.yandex.practicum.grpc.telemetry.event.*;
 import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 
@@ -22,14 +21,26 @@ public class EventServiceImpl implements EventService {
     private final String HUBS_TOPIC;
 
     @Override
-    public void collectSensorEvent(SensorEvent event) {
-        SensorEventAvro avroRecord = EventMapper.toAvro(event);
-        eventKafkaProducer.send(SENSORS_TOPIC, event.getHubId(), avroRecord, event.getTimestamp());
+    public void collectSensorEvent(SensorEventProto protoEvent) {
+        SensorEventAvro avroRecord = EventMapper.toAvro(protoEvent);
+        eventKafkaProducer.send(SENSORS_TOPIC, avroRecord.getHubId(), avroRecord, avroRecord.getTimestamp());
     }
 
     @Override
-    public void collectHubEvent(HubEvent event) {
-        HubEventAvro avroRecord = EventMapper.toAvro(event);
-        eventKafkaProducer.send(HUBS_TOPIC, event.getHubId(), avroRecord, event.getTimestamp());
+    public void collectHubEvent(HubEventProto protoEvent) {
+        HubEventAvro avroRecord = EventMapper.toAvro(protoEvent);
+        eventKafkaProducer.send(HUBS_TOPIC, avroRecord.getHubId(), avroRecord, avroRecord.getTimestamp());
     }
+
+//    @Override
+//    public void collectSensorEvent(SensorEvent event) {
+//        SensorEventAvro avroRecord = EventMapper.toAvro(event);
+//        eventKafkaProducer.send(SENSORS_TOPIC, event.getHubId(), avroRecord, event.getTimestamp());
+//    }
+//
+//    @Override
+//    public void collectHubEvent(HubEvent event) {
+//        HubEventAvro avroRecord = EventMapper.toAvro(event);
+//        eventKafkaProducer.send(HUBS_TOPIC, event.getHubId(), avroRecord, event.getTimestamp());
+//    }
 }
