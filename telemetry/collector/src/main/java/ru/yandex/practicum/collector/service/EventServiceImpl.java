@@ -31,16 +31,4 @@ public class EventServiceImpl implements EventService {
         HubEventAvro avroRecord = EventMapper.toAvro(protoEvent);
         eventKafkaProducer.send(HUBS_TOPIC, avroRecord.getHubId(), avroRecord, avroRecord.getTimestamp());
     }
-
-//    @Override
-//    public void collectSensorEvent(SensorEvent event) {
-//        SensorEventAvro avroRecord = EventMapper.toAvro(event);
-//        eventKafkaProducer.send(SENSORS_TOPIC, event.getHubId(), avroRecord, event.getTimestamp());
-//    }
-//
-//    @Override
-//    public void collectHubEvent(HubEvent event) {
-//        HubEventAvro avroRecord = EventMapper.toAvro(event);
-//        eventKafkaProducer.send(HUBS_TOPIC, event.getHubId(), avroRecord, event.getTimestamp());
-//    }
 }
