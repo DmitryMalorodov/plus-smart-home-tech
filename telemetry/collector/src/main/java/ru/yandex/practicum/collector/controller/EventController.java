@@ -43,14 +43,4 @@ public class EventController extends CollectorControllerGrpc.CollectorController
                     .asRuntimeException());
         }
     }
-//
-//    @PostMapping("/sensors")
-//    public void collectSensorEvent(@Valid @RequestBody final SensorEvent sensorEvent) {
-//        eventService.collectSensorEvent(sensorEvent);
-//    }
-//
-//    @PostMapping("/hubs")
-//    public void collectHubEvent(@Valid @RequestBody final HubEvent hubEvent) {
-//        eventService.collectHubEvent(hubEvent);
-//    }
 }

@@ -73,10 +73,10 @@ public class AggregationStarter {
                                 snapshot,
                                 snapshot.getTimestamp()
                         );
-                        producer.flush();
                     });
                 }
 
+                producer.flush();
                 consumer.commitSync();
             }
 
