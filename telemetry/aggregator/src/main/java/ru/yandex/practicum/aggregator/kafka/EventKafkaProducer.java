@@ -7,21 +7,18 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.Properties;
 
 @Slf4j
-@Component
 public class EventKafkaProducer implements AutoCloseable {
     private final Producer<String, SpecificRecordBase> producer;
 
     public EventKafkaProducer(
-            @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
-            @Value("${spring.kafka.producer.key-serializer}") String keySerializer,
-            @Value("${spring.kafka.producer.value-serializer}") String valueSerializer
+            String bootstrapServers,
+            String keySerializer,
+            String valueSerializer
     ) {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
