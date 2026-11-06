@@ -47,7 +47,7 @@ public class SnapshotAggregator {
         snapshot.getSensorsState().put(sensorId, newState);
         snapshot.setTimestamp(event.getTimestamp());
 
-        log.info("Снапшот хаба {} успешно обновлен датчиком {}", hubId, sensorId);
+        log.debug("Снапшот хаба {} успешно обновлен датчиком {}", hubId, sensorId);
         return Optional.of(snapshot);
     }
 }
