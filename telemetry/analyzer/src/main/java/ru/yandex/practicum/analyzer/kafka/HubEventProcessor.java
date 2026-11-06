@@ -43,7 +43,7 @@ public class HubEventProcessor implements Runnable {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "analyzer-hub-events-group");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
 
         this.consumer = new KafkaConsumer<>(
                 props,
@@ -57,6 +57,10 @@ public class HubEventProcessor implements Runnable {
 
             while (true) {
                 ConsumerRecords<String, HubEventAvro> records = consumer.poll(Duration.ofMillis(1000));
+
+                if (records.isEmpty()) continue;
+                boolean batchProcessedSuccessfully = true;
+
                 for (ConsumerRecord<String, HubEventAvro> record : records) {
                     HubEventAvro event = record.value();
                     if (event == null) continue;
@@ -64,7 +68,19 @@ public class HubEventProcessor implements Runnable {
                         handleHubEvent(event);
                     } catch (Exception e) {
                         log.error("Ошибка при обработке события хаба: {}", event, e);
+                        batchProcessedSuccessfully = false;
+                        break;
                     }
+                }
+
+                if (batchProcessedSuccessfully) {
+                    try {
+                        consumer.commitSync();
+                    } catch (Exception e) {
+                        log.error("Не удалось закоммитить оффсеты в Kafka", e);
+                    }
+                } else {
+                    throw new RuntimeException("Пакет сообщений не был полностью обработан. Оффсеты не закоммичены.");
                 }
             }
         } catch (WakeupException ignored) {
@@ -106,10 +122,7 @@ public class HubEventProcessor implements Runnable {
 
             // 1. Удаляем старый сценарий с таким же именем, если он был
             scenarioRepository.findByHubIdAndName(hubId, scenarioAdded.getName())
-                    .ifPresent(oldScenario -> {
-                        scenarioRepository.delete(oldScenario);
-                        scenarioRepository.flush();
-                    });
+                    .ifPresent(scenarioRepository::delete);
 
             // 2. Создаем и сохраняем сам сценарий, чтобы получить его ID
             Scenario scenario = Scenario.builder()
@@ -117,7 +130,6 @@ public class HubEventProcessor implements Runnable {
                     .name(scenarioAdded.getName())
                     .build();
             scenario = scenarioRepository.save(scenario);
-            scenarioRepository.flush();
 
             // 3. Собираем уникальные ID всех датчиков
             Set<String> allSensorIds = new java.util.HashSet<>();
