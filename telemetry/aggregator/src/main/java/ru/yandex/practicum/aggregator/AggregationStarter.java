@@ -45,15 +45,9 @@ public class AggregationStarter {
             log.info("Подписываемся на топик событий датчиков: {}", inputTopic);
             consumer.subscribe(List.of(inputTopic));
 
-            Thread mainThread = Thread.currentThread();
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 log.info("Получен сигнал остановки, вызываем consumer.wakeup()");
                 consumer.wakeup();
-                try {
-                    mainThread.join();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
             }));
 
             while (true) {
