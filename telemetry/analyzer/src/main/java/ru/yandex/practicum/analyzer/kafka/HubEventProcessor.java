@@ -2,7 +2,6 @@ package ru.yandex.practicum.analyzer.kafka;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -31,32 +30,19 @@ public class HubEventProcessor implements Runnable {
     private final ConditionRepository conditionRepository;
     private final ActionRepository actionRepository;
 
-    @Value("${spring.kafka.bootstrap-servers}")
-    private String bootstrapServers;
+    private final KafkaConsumer<String, HubEventAvro> hubEventConsumer;
+
     @Value("${spring.kafka.topics.hubs}")
     private String hubsTopic;
 
-    private KafkaConsumer<String, HubEventAvro> consumer;
-
     @Override
     public void run() {
-        Properties props = new Properties();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "analyzer-hub-events-group");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-
-        this.consumer = new KafkaConsumer<>(
-                props,
-                new org.apache.kafka.common.serialization.StringDeserializer(),
-                new ru.yandex.practicum.deserialization.HubEventDeserializer()
-        );
-
         try {
             log.info("HubEventProcessor подписывается на топик: {}", hubsTopic);
-            consumer.subscribe(List.of(hubsTopic));
+            hubEventConsumer.subscribe(List.of(hubsTopic));
 
             while (true) {
-                ConsumerRecords<String, HubEventAvro> records = consumer.poll(Duration.ofMillis(1000));
+                ConsumerRecords<String, HubEventAvro> records = hubEventConsumer.poll(Duration.ofMillis(1000));
 
                 if (records.isEmpty()) continue;
                 boolean batchProcessedSuccessfully = true;
@@ -75,7 +61,7 @@ public class HubEventProcessor implements Runnable {
 
                 if (batchProcessedSuccessfully) {
                     try {
-                        consumer.commitSync();
+                        hubEventConsumer.commitSync();
                     } catch (Exception e) {
                         log.error("Не удалось закоммитить оффсеты в Kafka", e);
                     }
@@ -86,7 +72,7 @@ public class HubEventProcessor implements Runnable {
         } catch (WakeupException ignored) {
             log.info("HubEventProcessor прерван через wakeup().");
         } finally {
-            consumer.close();
+            hubEventConsumer.close();
             log.info("HubEventProcessor успешно остановлен.");
         }
     }
@@ -238,6 +224,6 @@ public class HubEventProcessor implements Runnable {
     }
 
     public void stop() {
-        if (consumer != null) consumer.wakeup();
+        if (hubEventConsumer != null) hubEventConsumer.wakeup();
     }
 }
