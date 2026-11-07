@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.aggregator.kafka.EventKafkaConsumer;
 import ru.yandex.practicum.aggregator.kafka.EventKafkaProducer;
+import ru.yandex.practicum.aggregator.kafka.KafkaConfig;
 import ru.yandex.practicum.aggregator.service.SnapshotAggregator;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 
@@ -17,41 +18,36 @@ import java.util.List;
 @Slf4j
 @Component
 public class AggregationStarter {
-    private final EventKafkaConsumer consumer;
-    private final EventKafkaProducer producer;
+    private final KafkaConfig kafkaConfig;
     private final SnapshotAggregator snapshotAggregator;
-
     private final String inputTopic;
     private final String outputTopic;
+    private volatile EventKafkaConsumer activeConsumer;
 
     public AggregationStarter(
-            EventKafkaConsumer consumer,
-            EventKafkaProducer producer,
+            KafkaConfig kafkaConfig,
             SnapshotAggregator snapshotAggregator,
             @Value("${spring.kafka.topics.sensors}") String inputTopic,
             @Value("${spring.kafka.topics.snapshots}") String outputTopic
     ) {
-        this.consumer = consumer;
-        this.producer = producer;
+        this.kafkaConfig = kafkaConfig;
         this.snapshotAggregator = snapshotAggregator;
         this.inputTopic = inputTopic;
         this.outputTopic = outputTopic;
     }
 
     public void start() {
+        EventKafkaConsumer consumer = kafkaConfig.eventKafkaConsumer();
+        EventKafkaProducer producer = kafkaConfig.eventKafkaProducer();
+        this.activeConsumer = consumer;
+
         try {
             log.info("Подписываемся на топик событий датчиков: {}", inputTopic);
             consumer.subscribe(List.of(inputTopic));
 
-            Thread mainThread = Thread.currentThread();
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 log.info("Получен сигнал остановки, вызываем consumer.wakeup()");
                 consumer.wakeup();
-                try {
-                    mainThread.join();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
             }));
 
             while (true) {
@@ -97,6 +93,7 @@ public class AggregationStarter {
                 consumer.close();
                 log.info("Закрываем продюсер");
                 producer.close();
+                this.activeConsumer = null;
                 log.info("Сервис Aggregator успешно остановлен.");
             }
         }

@@ -5,8 +5,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 
 import java.time.Duration;
@@ -14,15 +12,14 @@ import java.util.List;
 import java.util.Properties;
 
 @Slf4j
-@Component
 public class EventKafkaConsumer implements AutoCloseable {
     private final KafkaConsumer<String, SensorEventAvro> consumer;
 
     public EventKafkaConsumer(
-            @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
-            @Value("${spring.kafka.consumer.group-id}") String groupId,
-            @Value("${spring.kafka.consumer.key-deserializer}") String keyDeserializer,
-            @Value("${spring.kafka.consumer.value-deserializer}") String valueDeserializer
+            String bootstrapServers,
+            String groupId,
+            String keyDeserializer,
+            String valueDeserializer
     ) {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);

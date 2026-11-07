@@ -2,7 +2,6 @@ package ru.yandex.practicum.analyzer.kafka;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -18,8 +17,9 @@ import ru.yandex.practicum.analyzer.repository.SensorRepository;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 
 import java.time.Duration;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -30,32 +30,23 @@ public class HubEventProcessor implements Runnable {
     private final ConditionRepository conditionRepository;
     private final ActionRepository actionRepository;
 
-    @Value("${spring.kafka.bootstrap-servers}")
-    private String bootstrapServers;
+    private final KafkaConsumer<String, HubEventAvro> hubEventConsumer;
+
     @Value("${spring.kafka.topics.hubs}")
     private String hubsTopic;
 
-    private KafkaConsumer<String, HubEventAvro> consumer;
-
     @Override
     public void run() {
-        Properties props = new Properties();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "analyzer-hub-events-group");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
-
-        this.consumer = new KafkaConsumer<>(
-                props,
-                new org.apache.kafka.common.serialization.StringDeserializer(),
-                new ru.yandex.practicum.deserialization.HubEventDeserializer()
-        );
-
         try {
             log.info("HubEventProcessor подписывается на топик: {}", hubsTopic);
-            consumer.subscribe(List.of(hubsTopic));
+            hubEventConsumer.subscribe(List.of(hubsTopic));
 
             while (true) {
-                ConsumerRecords<String, HubEventAvro> records = consumer.poll(Duration.ofMillis(1000));
+                ConsumerRecords<String, HubEventAvro> records = hubEventConsumer.poll(Duration.ofMillis(1000));
+
+                if (records.isEmpty()) continue;
+                boolean batchProcessedSuccessfully = true;
+
                 for (ConsumerRecord<String, HubEventAvro> record : records) {
                     HubEventAvro event = record.value();
                     if (event == null) continue;
@@ -63,13 +54,25 @@ public class HubEventProcessor implements Runnable {
                         handleHubEvent(event);
                     } catch (Exception e) {
                         log.error("Ошибка при обработке события хаба: {}", event, e);
+                        batchProcessedSuccessfully = false;
+                        break;
                     }
+                }
+
+                if (batchProcessedSuccessfully) {
+                    try {
+                        hubEventConsumer.commitSync();
+                    } catch (Exception e) {
+                        log.error("Не удалось закоммитить оффсеты в Kafka", e);
+                    }
+                } else {
+                    throw new RuntimeException("Пакет сообщений не был полностью обработан. Оффсеты не закоммичены.");
                 }
             }
         } catch (WakeupException ignored) {
             log.info("HubEventProcessor прерван через wakeup().");
         } finally {
-            consumer.close();
+            hubEventConsumer.close();
             log.info("HubEventProcessor успешно остановлен.");
         }
     }
@@ -105,10 +108,7 @@ public class HubEventProcessor implements Runnable {
 
             // 1. Удаляем старый сценарий с таким же именем, если он был
             scenarioRepository.findByHubIdAndName(hubId, scenarioAdded.getName())
-                    .ifPresent(oldScenario -> {
-                        scenarioRepository.delete(oldScenario);
-                        scenarioRepository.flush();
-                    });
+                    .ifPresent(scenarioRepository::delete);
 
             // 2. Создаем и сохраняем сам сценарий, чтобы получить его ID
             Scenario scenario = Scenario.builder()
@@ -116,10 +116,9 @@ public class HubEventProcessor implements Runnable {
                     .name(scenarioAdded.getName())
                     .build();
             scenario = scenarioRepository.save(scenario);
-            scenarioRepository.flush();
 
             // 3. Собираем уникальные ID всех датчиков
-            java.util.Set<String> allSensorIds = new java.util.HashSet<>();
+            Set<String> allSensorIds = new java.util.HashSet<>();
             if (scenarioAdded.getConditions() != null) {
                 scenarioAdded.getConditions().forEach(c -> allSensorIds.add(c.getSensorId()));
             }
@@ -128,57 +127,83 @@ public class HubEventProcessor implements Runnable {
             }
 
             // 4. Гарантируем существование датчиков в БД
+            List<Sensor> existingSensors = sensorRepository.findAllById(allSensorIds);
+            Map<String, Sensor> sensorMap = existingSensors.stream()
+                    .collect(Collectors.toMap(Sensor::getId, Function.identity()));
+
+            List<Sensor> sensorsToSave = new ArrayList<>();
             for (String sensorId : allSensorIds) {
-                if (!sensorRepository.existsById(sensorId)) {
+                if (!sensorMap.containsKey(sensorId)) {
                     Sensor newSensor = Sensor.builder()
                             .id(sensorId)
                             .hubId(hubId)
                             .build();
-                    sensorRepository.save(newSensor);
-                    sensorRepository.flush();
+                    sensorsToSave.add(newSensor);
+                    sensorMap.put(sensorId, newSensor);
                 }
+            }
+            if (!sensorsToSave.isEmpty()) {
+                sensorRepository.saveAll(sensorsToSave);
             }
 
             final Scenario finalScenario = scenario;
 
             // 5. Маппим и сохраняем условия сценария
-            List<ScenarioCondition> conditions = scenarioAdded.getConditions().stream().map(c -> {
-                Sensor sensor = sensorRepository.findById(c.getSensorId())
-                        .orElseThrow(() -> new IllegalStateException("Датчик не найден: " + c.getSensorId()));
+            List<Condition> conditionsToSave = scenarioAdded.getConditions().stream().map(c ->
+                    Condition.builder()
+                            .type(ConditionType.valueOf(c.getType().name()))
+                            .operation(ConditionOperation.valueOf(c.getOperation().name()))
+                            .value(c.getValue() instanceof Integer ? (Integer) c.getValue() : ((Boolean) c.getValue() ? 1 : 0))
+                            .build()
+            ).toList();
 
-                Condition condition = Condition.builder()
-                        .type(ConditionType.valueOf(c.getType().name()))
-                        .operation(ConditionOperation.valueOf(c.getOperation().name()))
-                        .value(c.getValue() instanceof Integer ? (Integer) c.getValue() : ((Boolean) c.getValue() ? 1 : 0))
-                        .build();
-                condition = conditionRepository.save(condition);
+            List<Condition> savedConditions = conditionRepository.saveAll(conditionsToSave);
 
-                return ScenarioCondition.builder()
-                        .id(new ScenarioCondition.Id(finalScenario.getId(), sensor.getId(), condition.getId()))
+            List<ScenarioCondition> conditions = new ArrayList<>();
+            for (int i = 0; i < scenarioAdded.getConditions().size(); i++) {
+                var c = scenarioAdded.getConditions().get(i);
+                Condition cond = savedConditions.get(i);
+                Sensor sensor = sensorMap.get(c.getSensorId());
+
+                if (sensor == null) {
+                    throw new IllegalStateException("Датчик не найден в локальном контексте: " + c.getSensorId());
+                }
+
+                conditions.add(ScenarioCondition.builder()
+                        .id(new ScenarioCondition.Id(finalScenario.getId(), sensor.getId(), cond.getId()))
                         .scenario(finalScenario)
                         .sensor(sensor)
-                        .condition(condition)
-                        .build();
-            }).toList();
+                        .condition(cond)
+                        .build());
+            }
 
             // 6. Маппим и сохраняем действия сценария
-            List<ScenarioAction> actions = scenarioAdded.getActions().stream().map(a -> {
-                Sensor sensor = sensorRepository.findById(a.getSensorId())
-                        .orElseThrow(() -> new IllegalStateException("Датчик не найден: " + a.getSensorId()));
+            List<Action> actionsToSave = scenarioAdded.getActions().stream().map(a ->
+                    Action.builder()
+                            .type(ActionType.valueOf(a.getType().name()))
+                            .value(a.getValue() != null ? a.getValue() : null)
+                            .build()
+            ).toList();
 
-                Action action = Action.builder()
-                        .type(ActionType.valueOf(a.getType().name()))
-                        .value(a.getValue() != null ? a.getValue() : null)
-                        .build();
-                action = actionRepository.save(action);
+            List<Action> savedActions = actionRepository.saveAll(actionsToSave);
 
-                return ScenarioAction.builder()
-                        .id(new ScenarioAction.Id(finalScenario.getId(), sensor.getId(), action.getId()))
+            List<ScenarioAction> actions = new ArrayList<>();
+            for (int i = 0; i < scenarioAdded.getActions().size(); i++) {
+                var a = scenarioAdded.getActions().get(i);
+                Action act = savedActions.get(i);
+                Sensor sensor = sensorMap.get(a.getSensorId());
+
+                if (sensor == null) {
+                    throw new IllegalStateException("Датчик не найден в локальном контексте: " + a.getSensorId());
+                }
+
+                actions.add(ScenarioAction.builder()
+                        .id(new ScenarioAction.Id(finalScenario.getId(), sensor.getId(), act.getId()))
                         .scenario(finalScenario)
                         .sensor(sensor)
-                        .action(action)
-                        .build();
-            }).toList();
+                        .action(act)
+                        .build());
+            }
 
             // 7. Обновляем списки в сценарии и сохраняем финальное состояние
             finalScenario.setConditions(conditions);
@@ -199,6 +224,6 @@ public class HubEventProcessor implements Runnable {
     }
 
     public void stop() {
-        if (consumer != null) consumer.wakeup();
+        if (hubEventConsumer != null) hubEventConsumer.wakeup();
     }
 }

@@ -28,6 +28,9 @@ spring:
     topics:
       hubs: "telemetry.hubs.v1"
       snapshots: "telemetry.snapshots.v1"
+    groups:
+      hubs: "analyzer-hub-events-group"
+      snapshots: "analyzer-snapshots-group"
 
 grpc:
   client:

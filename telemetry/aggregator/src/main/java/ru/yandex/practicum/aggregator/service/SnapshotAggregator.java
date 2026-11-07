@@ -38,7 +38,7 @@ public class SnapshotAggregator {
                 return Optional.empty();
             }
 
-            if (oldState.getData().toString().equals(event.getPayload().toString())) {
+            if (oldState.getData().equals(event.getPayload())) {
                 log.debug("Событие датчика {} проигнорировано: данные не изменились", sensorId);
                 return Optional.empty();
             }
@@ -47,7 +47,7 @@ public class SnapshotAggregator {
         snapshot.getSensorsState().put(sensorId, newState);
         snapshot.setTimestamp(event.getTimestamp());
 
-        log.info("Снапшот хаба {} успешно обновлен датчиком {}", hubId, sensorId);
+        log.debug("Снапшот хаба {} успешно обновлен датчиком {}", hubId, sensorId);
         return Optional.of(snapshot);
     }
 }
