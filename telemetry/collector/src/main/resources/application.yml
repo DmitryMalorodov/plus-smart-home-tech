@@ -1,15 +1,21 @@
 server:
   port: 8080
 
+grpc:
+  server:
+    port: 59091
+
 spring:
   application:
     name: telemetry-collector
 
   kafka:
     bootstrap-servers: localhost:9092
+
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: ru.yandex.practicum.serialization.GeneralAvroSerializer
+
     topics:
       sensors: "telemetry.sensors.v1"
       hubs: "telemetry.hubs.v1"
