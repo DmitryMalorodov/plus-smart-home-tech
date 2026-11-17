@@ -1,0 +1,17 @@
+spring:
+  main:
+    web-application-type: none
+
+  kafka:
+    consumer:
+      group-id: telemetry-aggregator-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: ru.yandex.practicum.deserialization.SensorEventDeserializer
+
+    topics:
+      sensors: "telemetry.sensors.v1"
+      snapshots: "telemetry.snapshots.v1"
+
+logging:
+  level:
+    ru.yandex.practicum.aggregator: DEBUG
