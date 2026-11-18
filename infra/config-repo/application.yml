@@ -22,3 +22,8 @@ logging:
     org:
       springframework: ERROR
       apache.kafka: WARN
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/
