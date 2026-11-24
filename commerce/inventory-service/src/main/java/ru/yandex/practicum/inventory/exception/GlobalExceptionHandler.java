@@ -31,6 +31,13 @@ public class GlobalExceptionHandler {
         return new ErrorResponse(HttpStatus.CONFLICT.value(), e.getMessage());
     }
 
+    @ExceptionHandler(InventoryConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleInventoryConflict(InventoryConflictException e) {
+        log.warn("Конфликт состояния складской записи: {}", e.getMessage());
+        return new ErrorResponse(HttpStatus.CONFLICT.value(), e.getMessage());
+    }
+
     /**
      * Конфликт оптимистичной блокировки: два запроса одновременно изменили одну запись.
      * Клиент должен повторить запрос.
