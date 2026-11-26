@@ -4,11 +4,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.inventory.dto.InventoryDto;
+import ru.yandex.practicum.inventory.dto.ReleaseRequest;
 import ru.yandex.practicum.inventory.dto.ReserveRequest;
 import ru.yandex.practicum.inventory.dto.ReserveResponse;
 import ru.yandex.practicum.inventory.dto.UpdateInventoryRequest;
 import ru.yandex.practicum.inventory.entity.InventoryRecord;
 import ru.yandex.practicum.inventory.exception.InsufficientStockException;
+import ru.yandex.practicum.inventory.exception.InvalidReleaseException;
 import ru.yandex.practicum.inventory.exception.InventoryConflictException;
 import ru.yandex.practicum.inventory.exception.NotFoundException;
 import ru.yandex.practicum.inventory.mapper.InventoryMapper;
@@ -81,6 +83,26 @@ public class InventoryService {
                 true,
                 InventoryMapper.available(saved),
                 "Зарезервировано " + request.quantity() + " шт. товара id=" + request.productId());
+    }
+
+    @Transactional
+    public ReserveResponse release(ReleaseRequest request) {
+        InventoryRecord record = getRecord(request.productId());
+
+        if (record.getReservedQuantity() < request.quantity()) {
+            throw new InvalidReleaseException(
+                    "Невозможно снять резерв " + request.quantity()
+                            + " шт. для товара id=" + request.productId()
+                            + ": сейчас зарезервировано " + record.getReservedQuantity());
+        }
+
+        record.setReservedQuantity(record.getReservedQuantity() - request.quantity());
+        InventoryRecord saved = inventoryRepository.save(record);
+
+        return new ReserveResponse(
+                true,
+                InventoryMapper.available(saved),
+                "Снят резерв " + request.quantity() + " шт. товара id=" + request.productId());
     }
 
     private InventoryRecord getRecord(Long productId) {
